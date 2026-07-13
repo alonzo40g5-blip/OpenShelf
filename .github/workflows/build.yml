@@ -1,7 +1,7 @@
 name: build
 
 # Compiles OpenShelf straight from the openshelf.zip in this repo.
-#   1) Keep openshelf.zip in the repo root (you already uploaded it).
+#   1) Keep openshelf.zip in the repo root.
 #   2) Keep THIS file at .github/workflows/build.yml.
 #   3) One-time: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 #
@@ -71,6 +71,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
