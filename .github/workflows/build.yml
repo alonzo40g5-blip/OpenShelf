@@ -1,7 +1,7 @@
 name: build
 
 # Compiles OpenShelf straight from the openshelf.zip in this repo.
-#   1) Keep openshelf.zip in the repo root.
+#   1) Keep openshelf.zip in the repo root (you already uploaded it).
 #   2) Keep THIS file at .github/workflows/build.yml.
 #   3) One-time: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 #
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Set up Java (JDK 17 for Capacitor 6)
         uses: actions/setup-java@v4
@@ -91,6 +91,8 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload web app as the Pages artifact
         uses: actions/upload-pages-artifact@v3
