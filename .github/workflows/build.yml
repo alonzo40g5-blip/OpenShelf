@@ -1,0 +1,103 @@
+name: build
+
+# Builds BOTH apps automatically:
+#   • web     → deploys web/ to GitHub Pages (a live HTTPS URL, PWA-installable)
+#   • android → builds a debug APK you can download from the run's "Artifacts"
+#
+# One-time setup in your repo:
+#   Settings → Pages → Build and deployment → Source: "GitHub Actions"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- WEB
+  web:
+    name: Deploy web app (GitHub Pages)
+    # only publish from main; PRs still build the APK below
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload web/ as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+  # ------------------------------------------------------------- ANDROID
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java (JDK 17 for Capacitor 6)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: android
+        run: npm install
+
+      - name: Sync shared web reader + generate native project
+        working-directory: android
+        run: |
+          npm run sync-web
+          npx cap add android
+          npx cap sync android
+          chmod +x android/gradlew
+
+      - name: Build debug APK
+        working-directory: android/android
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenShelf-debug-apk
+          path: android/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+# Notes
+# ─────
+# • The APK is a DEBUG build: install it on any phone with "install unknown apps"
+#   enabled — no signing needed. Grab it from the run's "Artifacts" section.
+# • For the Play Store you need a SIGNED RELEASE build. Add your keystore as
+#   encrypted repo secrets and run `./gradlew bundleRelease` with a signing config.
+#   CI defaults to debug because release signing needs secrets only you control.
+# • First Pages run: enable Settings → Pages → Source: "GitHub Actions", then the
+#   reader goes live at the job's page_url, installable on any phone.
