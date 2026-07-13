@@ -1,16 +1,17 @@
 name: build
 
-# Builds BOTH apps automatically:
-#   • web     → deploys web/ to GitHub Pages (a live HTTPS URL, PWA-installable)
-#   • android → builds a debug APK you can download from the run's "Artifacts"
+# Compiles OpenShelf straight from the openshelf.zip in this repo.
+#   1) Keep openshelf.zip in the repo root (you already uploaded it).
+#   2) Keep THIS file at .github/workflows/build.yml.
+#   3) One-time: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 #
-# One-time setup in your repo:
-#   Settings → Pages → Build and deployment → Source: "GitHub Actions"
+# Results:
+#   • android job -> downloadable APK under the run's "Artifacts"
+#   • web job     -> live site on GitHub Pages (URL printed in the web job)
 
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -21,33 +22,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ---------------------------------------------------------------- WEB
-  web:
-    name: Deploy web app (GitHub Pages)
-    # only publish from main; PRs still build the APK below
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload web/ as the Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
-
   # ------------------------------------------------------------- ANDROID
   android:
     name: Build Android APK
@@ -69,35 +43,59 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install dependencies
-        working-directory: android
-        run: npm install
-
-      - name: Sync shared web reader + generate native project
-        working-directory: android
+      - name: Unzip project and build APK
         run: |
+          set -e
+          unzip -o openshelf.zip -d _extracted
+          APP="$(dirname "$(find _extracted -type f -name capacitor.config.json | head -n1)")"
+          echo "Android project: $APP"
+          cd "$APP"
+          npm install
           npm run sync-web
           npx cap add android
           npx cap sync android
           chmod +x android/gradlew
-
-      - name: Build debug APK
-        working-directory: android/android
-        run: ./gradlew assembleDebug --stacktrace
+          (cd android && ./gradlew assembleDebug --stacktrace)
+          echo "APK_PATH=$APP/android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: OpenShelf-debug-apk
-          path: android/android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.APK_PATH }}
           if-no-files-found: error
 
-# Notes
-# ─────
-# • The APK is a DEBUG build: install it on any phone with "install unknown apps"
-#   enabled — no signing needed. Grab it from the run's "Artifacts" section.
-# • For the Play Store you need a SIGNED RELEASE build. Add your keystore as
-#   encrypted repo secrets and run `./gradlew bundleRelease` with a signing config.
-#   CI defaults to debug because release signing needs secrets only you control.
-# • First Pages run: enable Settings → Pages → Source: "GitHub Actions", then the
-#   reader goes live at the job's page_url, installable on any phone.
+  # ---------------------------------------------------------------- WEB
+  web:
+    name: Deploy web app (GitHub Pages)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project and locate web app
+        id: web
+        run: |
+          set -e
+          unzip -o openshelf.zip -d _extracted
+          WEB="$(dirname "$(find _extracted -type f -path '*/web/index.html' | head -n1)")"
+          echo "Web app: $WEB"
+          echo "dir=$WEB" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload web app as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.web.outputs.dir }}
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
